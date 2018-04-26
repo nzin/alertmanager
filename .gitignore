@@ -7,6 +7,7 @@
 /.release
 /.tarballs
 
+!/config/testdata/*.yml
 !/cli/testdata/*.yml
 !/cli/config/testdata/*.yml
 !/doc/examples/simple.yml

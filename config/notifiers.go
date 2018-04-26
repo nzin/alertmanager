@@ -122,6 +122,13 @@ var (
 		MonitoringTool:    `{{ template "victorops.default.monitoring_tool" . }}`,
 	}
 
+	// DefaultVictorOpsConfig defines default values for VictorOps configurations.
+	DefaultCachetHqConfig = CachetHqConfig{
+		NotifierConfig: NotifierConfig{
+			VSendResolved: true,
+		},
+	}
+
 	// DefaultPushoverConfig defines default values for Pushover configurations.
 	DefaultPushoverConfig = PushoverConfig{
 		NotifierConfig: NotifierConfig{
@@ -394,6 +401,26 @@ func (c *VictorOpsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error
 	}
 	if c.RoutingKey == "" {
 		return fmt.Errorf("missing Routing key in VictorOps config")
+	}
+	return nil
+}
+
+// VictorOpsConfig configures notifications via VictorOps.
+type CachetHqConfig struct {
+	NotifierConfig `yaml:",inline" json:",inline"`
+
+	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
+
+	APIKey Secret `yaml:"api_key" json:"api_key"`
+	APIURL string `yaml:"api_url" json:"api_url"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *CachetHqConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultCachetHqConfig
+	type plain CachetHqConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
 	}
 	return nil
 }

@@ -47,9 +47,9 @@ func TestDefaultReceiverExists(t *testing.T) {
 route:
    group_wait: 30s
 `
-    _, err := Load(in)
+	_, err := Load(in)
 
-    expected := "root route must specify a default receiver"
+	expected := "root route must specify a default receiver"
 
 	if err == nil {
 		t.Fatalf("no error returned, expected:\n%v", expected)
@@ -258,7 +258,7 @@ func TestHideConfigSecrets(t *testing.T) {
 	s := c.String()
 	secretRe := regexp.MustCompile("<secret>")
 	matches := secretRe.FindAllStringIndex(s, -1)
-	if len(matches) != 14 || strings.Contains(s, "mysecret") {
+	if len(matches) != 17 || strings.Contains(s, "mysecret") {
 		t.Fatal("config's String method reveals authentication credentials.")
 	}
 }
@@ -330,6 +330,8 @@ func TestEmptyFieldsAndRegex(t *testing.T) {
 			OpsGenieAPIURL:   "https://api.opsgenie.com/",
 			WeChatAPIURL:     "https://qyapi.weixin.qq.com/cgi-bin/",
 			VictorOpsAPIURL:  "https://alert.victorops.com/integrations/generic/20131114/alert/",
+			CachetHqAPIURL:   "https://cachethq.foobar.org/",
+			CachetHqAPIKey:   "mysecret",
 		},
 
 		Templates: []string{
@@ -422,6 +424,39 @@ func TestVictorOpsNoAPIKey(t *testing.T) {
 	}
 	if err.Error() != "no global VictorOps API Key set" {
 		t.Errorf("Expected: %s\nGot: %s", "no global VictorOps API Key set", err.Error())
+	}
+}
+
+func TestCachetHqDefaultAPIKey(t *testing.T) {
+	conf, _, err := LoadFile("testdata/conf.cachethq-default-apikey.yml")
+	if err != nil {
+		t.Errorf("Error parsing %s: %s", "testdata/conf.cachethq-default-apikey.yml", err)
+	}
+
+	var defaultKey = conf.Global.CachetHqAPIKey
+	if defaultKey != conf.Receivers[0].CachetHqConfigs[0].APIKey {
+		t.Errorf("Invalid cachethq key: %s\nExpected: %s", conf.Receivers[0].CachetHqConfigs[0].APIKey, defaultKey)
+	}
+	if defaultKey == conf.Receivers[1].CachetHqConfigs[0].APIKey {
+		t.Errorf("Invalid cachethq key: %s\nExpected: %s", conf.Receivers[0].CachetHqConfigs[0].APIKey, "deb97a759ee7b8ba42e02dddf2b412fe")
+	}
+
+	var defaultURL = conf.Global.CachetHqAPIURL
+	if defaultURL != conf.Receivers[0].CachetHqConfigs[0].APIURL {
+		t.Errorf("Invalid cachethq url: %s\nExpected: %s", conf.Receivers[0].CachetHqConfigs[0].APIURL, defaultURL)
+	}
+	if defaultURL == conf.Receivers[1].CachetHqConfigs[0].APIURL {
+		t.Errorf("Invalid cachethq url: %s\nExpected: %s", conf.Receivers[0].CachetHqConfigs[0].APIURL, "https://cachethq.bar.org/")
+	}
+}
+
+func TestCachetHqNoAPIKey(t *testing.T) {
+	_, _, err := LoadFile("testdata/conf.cachethq-no-apikey.yml")
+	if err == nil {
+		t.Errorf("Expected an error parsing %s: %s", "testdata/conf.cachethq-no-apikey.yml", err)
+	}
+	if err.Error() != "no global CachetHq API Key set" {
+		t.Errorf("Expected: %s\nGot: %s", "no global CachetHq API Key set", err.Error())
 	}
 }
 

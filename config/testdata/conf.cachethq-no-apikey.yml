@@ -1,0 +1,18 @@
+global:
+  cachethq_api_url: https://cachethq.foobar.org/
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  receiver: service-X-cachethq
+  routes:
+  - match:
+      service: foo
+    receiver: service-X-cachethq
+
+receivers:
+- name: 'service-X-cachethq'
+  cachethq_configs:
+  - component_name: 'service-X'

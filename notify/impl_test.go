@@ -82,6 +82,14 @@ func TestVictorOpsRetry(t *testing.T) {
 	}
 }
 
+func TestCachetHqRetry(t *testing.T) {
+	notifier := new(CachetHq)
+	for statusCode, expected := range retryTests(defaultRetryCodes()) {
+		actual, _ := notifier.retry(statusCode)
+		require.Equal(t, expected, actual, fmt.Sprintf("error on status %d", statusCode))
+	}
+}
+
 func TestPushoverRetry(t *testing.T) {
 	notifier := new(Pushover)
 	for statusCode, expected := range retryTests(defaultRetryCodes()) {

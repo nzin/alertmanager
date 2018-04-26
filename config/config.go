@@ -301,6 +301,26 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				voc.APIKey = c.Global.VictorOpsAPIKey
 			}
 		}
+		for _, chc := range rcv.CachetHqConfigs {
+			if chc.HTTPConfig == nil {
+				chc.HTTPConfig = c.Global.HTTPConfig
+			}
+			if chc.APIURL == "" {
+				if c.Global.CachetHqAPIURL == "" {
+					return fmt.Errorf("no global CachetHq URL set")
+				}
+				chc.APIURL = c.Global.CachetHqAPIURL
+			}
+			if !strings.HasSuffix(chc.APIURL, "/") {
+				chc.APIURL += "/"
+			}
+			if chc.APIKey == "" {
+				if c.Global.CachetHqAPIKey == "" {
+					return fmt.Errorf("no global CachetHq API Key set")
+				}
+				chc.APIKey = c.Global.CachetHqAPIKey
+			}
+		}
 		names[rcv.Name] = struct{}{}
 	}
 
@@ -379,6 +399,8 @@ type GlobalConfig struct {
 	WeChatAPICorpID  string `yaml:"wechat_api_corp_id,omitempty" json:"wechat_api_corp_id,omitempty"`
 	VictorOpsAPIURL  string `yaml:"victorops_api_url,omitempty" json:"victorops_api_url,omitempty"`
 	VictorOpsAPIKey  Secret `yaml:"victorops_api_key,omitempty" json:"victorops_api_key,omitempty"`
+	CachetHqAPIURL   string `yaml:"cachethq_api_url,omitempty" json:"cachethq_api_url,omitempty"`
+	CachetHqAPIKey   Secret `yaml:"cachethq_api_key,omitempty" json:"cachethq_api_key,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -510,6 +532,7 @@ type Receiver struct {
 	WechatConfigs    []*WechatConfig    `yaml:"wechat_configs,omitempty" json:"wechat_configs,omitempty"`
 	PushoverConfigs  []*PushoverConfig  `yaml:"pushover_configs,omitempty" json:"pushover_configs,omitempty"`
 	VictorOpsConfigs []*VictorOpsConfig `yaml:"victorops_configs,omitempty" json:"victorops_configs,omitempty"`
+	CachetHqConfigs  []*CachetHqConfig  `yaml:"cachethq_configs,omitempty" json:"cachethq_configs,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

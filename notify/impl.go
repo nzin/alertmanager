@@ -134,6 +134,10 @@ func BuildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 		n := NewVictorOps(c, tmpl, logger)
 		add("victorops", i, n, c)
 	}
+	for i, c := range nc.CachetHqConfigs {
+		n := NewCachetHq(c, tmpl, logger)
+		add("cachethq", i, n, c)
+	}
 	for i, c := range nc.PushoverConfigs {
 		n := NewPushover(c, tmpl, logger)
 		add("pushover", i, n, c)
@@ -1226,6 +1230,175 @@ func (n *VictorOps) retry(statusCode int) (bool, error) {
 		return false, fmt.Errorf("unexpected status code %v", statusCode)
 	}
 
+	return false, nil
+}
+
+// CachetHq implements a Notifier for CachetHq notifications.
+type CachetHq struct {
+	conf   *config.CachetHqConfig
+	tmpl   *template.Template
+	logger log.Logger
+}
+
+type cachetHqMessage struct {
+	Status int `json:"status"`
+}
+
+type cachetHqMessageList struct {
+	Meta struct {
+		Pagination struct {
+			CurrentPage int `json:"current_page"`
+			TotalPages  int `json:"total_pages"`
+		} `json:"pagination"`
+	} `json:"meta"`
+	Data []struct {
+		Id   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"data"`
+}
+
+// NewCachetHq returns a new CachetHq notifier.
+func NewCachetHq(c *config.CachetHqConfig, t *template.Template, l log.Logger) *CachetHq {
+	return &CachetHq{
+		conf:   c,
+		tmpl:   t,
+		logger: l,
+	}
+}
+
+// Notify implements the Notifier interface.
+func (n *CachetHq) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
+	key, ok := GroupKey(ctx)
+	if !ok {
+		return false, fmt.Errorf("group key missing")
+	}
+
+	level.Debug(n.logger).Log("msg", "Notifying CachetHq", "incident", key)
+
+	alerts := types.Alerts(as...)
+	status := 1 // component status: https://docs.cachethq.io/docs/component-statuses
+
+	if alerts.Status() == model.AlertFiring {
+		status = 4
+	}
+
+	if alerts.Status() == model.AlertResolved {
+		status = 1
+	}
+
+	// first need to fetch the components id (GET /api/v1/components)
+	// and retrieve data[] -> id,name
+	componentsId, retry, err := n.list(ctx, n.conf.APIURL, string(n.conf.APIKey), n.conf.HTTPConfig)
+	if err != nil {
+		level.Debug(n.logger).Log("msg", "Notifying CachetHq", "incident", err)
+		return retry, err
+	}
+
+	// then do a PUT on /api/v1/components/:componentid
+	for _, alert := range alerts {
+		if componentid, ok := componentsId[alert.Name()]; ok {
+			if retry, err := n.alert(ctx, componentid, status, n.conf.APIURL, string(n.conf.APIKey), n.conf.HTTPConfig); err != nil {
+				level.Debug(n.logger).Log("msg", "Notifying CachetHq", "incident", err)
+				return retry, err
+			}
+		}
+	}
+	return false, nil
+}
+
+// list will fetch the different CachetHQ components (id/name) via a GET /api/v1/components
+func (n *CachetHq) list(ctx context.Context, apiURL, apiKEY string, httpconfig *commoncfg.HTTPClientConfig) (map[string]int, bool, error) {
+	componentsId := make(map[string]int)
+	var message cachetHqMessageList
+
+	// we loop "only" on the max first 100 pages
+	for page := 1; page < 100; page++ {
+		nextPage := fmt.Sprintf("%sapi/v1/components?page=%d", apiURL, page)
+
+		req, err := http.NewRequest(http.MethodGet, nextPage, nil)
+		if err != nil {
+			return nil, false, err
+		}
+
+		req.Header.Set("Content-Type", contentTypeJSON)
+		req.Header.Set("X-Cachet-Token", apiKEY)
+
+		c, err := commoncfg.NewHTTPClientFromConfig(httpconfig)
+		if err != nil {
+			return nil, false, err
+		}
+
+		resp, err := c.Do(req.WithContext(ctx))
+		if err != nil {
+			retry, err := n.retry(resp.StatusCode)
+			return nil, retry, err
+		}
+		defer resp.Body.Close()
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		level.Debug(n.logger).Log("msg", "response: "+string(body))
+
+		if err := json.Unmarshal(body, &message); err != nil {
+			return nil, false, err
+		}
+
+		for _, data := range message.Data {
+			componentsId[data.Name] = data.Id
+		}
+
+		// is there a next page?
+		if message.Meta.Pagination.CurrentPage >= message.Meta.Pagination.TotalPages {
+			// nope
+			return componentsId, false, nil
+		}
+	}
+	return componentsId, false, nil
+}
+
+// alert will update the choosen CachetHQ components (id/name) via a PUT /api/v1/components/<componentid>
+func (n *CachetHq) alert(ctx context.Context, componentid, status int, apiURL, apiKEY string, httpconfig *commoncfg.HTTPClientConfig) (bool, error) {
+	msg := &cachetHqMessage{
+		Status: status,
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
+		return false, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%sapi/v1/components/%d", apiURL, componentid), &buf)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Content-Type", contentTypeJSON)
+	req.Header.Set("X-Cachet-Token", apiKEY)
+
+	c, err := commoncfg.NewHTTPClientFromConfig(httpconfig)
+	if err != nil {
+		return false, err
+	}
+
+	resp, err := c.Do(req.WithContext(ctx))
+	if err != nil {
+		return n.retry(resp.StatusCode)
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	level.Debug(n.logger).Log("msg", "response: "+string(body))
+
+	return false, nil
+}
+
+func (n *CachetHq) retry(statusCode int) (bool, error) {
+	// Missing documentation therefore assuming only 5xx response codes are
+	// recoverable.
+	if statusCode/100 == 5 {
+		return true, fmt.Errorf("unexpected status code %v", statusCode)
+	} else if statusCode/100 != 2 {
+		return false, fmt.Errorf("unexpected status code %v", statusCode)
+	}
 	return false, nil
 }
 

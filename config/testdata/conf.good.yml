@@ -10,7 +10,8 @@ global:
   # Alternative host for Hipchat.
   hipchat_api_url: 'https://hipchat.foobar.org/'
   slack_api_url: "mysecret"
-
+  cachethq_api_url: 'https://cachethq.foobar.org/'
+  cachethq_api_key: "mysecret"
 
 
 # The directory from which notification templates are read.
@@ -138,3 +139,7 @@ receivers:
   pushover_configs:
     - token: mysecret
       user_key: key
+- name: cachethq-receiver
+  cachethq_configs:
+    - api_url: https://cachethq.bar.org/
+    - api_key: mysecret
